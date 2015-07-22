@@ -1,0 +1,51 @@
+#!/usr/bin/python
+
+# Munin plugin to monitor values of all smarthome items following a naming pattern.
+# Items to be monitored must have "sqlite = yes" in their item definition.
+# The first level item name is used for munin.
+
+import os
+import sqlite3
+from munin import MuninPlugin
+
+# Path to the smarthome sqlite db file.
+PATH = '/opt/smarthome/var/db/smarthome.db'
+
+# Temperature ranges for Warning and critical messages.
+WARNING = '10:30'
+CRITICAL = '5:40'
+
+# SQL "like" pattern to select the items to monitor.
+ITEM_PATTERN = '%temperatur_ist'
+
+class TemperaturesPlugin(MuninPlugin):
+    title = "Temperatures"
+    args = "--base 1000 -l 0"
+    scale = False
+    category = "environment"
+
+    @property
+    def fields(self):
+        conf = []
+        for row in TemperaturesPlugin.dbfetch_('SELECT DISTINCT item from history WHERE item LIKE \'' + ITEM_PATTERN + '\';'):
+            room = row[0].split('.')[0]
+            conf.append([room, dict(
+                label = room.capitalize(),
+                info = 'Temperature in room \"' + room + '\".',
+                warning = str(WARNING),
+                critical = str(CRITICAL))])
+        return conf
+
+    def execute(self):
+        for row in TemperaturesPlugin.dbfetch_('SELECT max(time), item, avg from history WHERE item LIKE \'' + ITEM_PATTERN + '\' GROUP BY item;'):
+            print '{room}.value {temperature:.1f}'.format(room = row[1].split('.')[0], temperature = row[2])
+
+    @staticmethod
+    def dbfetch_(query):
+        db_connection = sqlite3.connect(PATH)
+        db_cursor = db_connection.cursor()
+        return db_cursor.execute(query).fetchall()
+
+
+if __name__ == "__main__":
+    TemperaturesPlugin().run()
